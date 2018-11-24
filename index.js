@@ -5,11 +5,13 @@
 
 //Dependencies
 const http = require('http');
+const https = require('https');
 const url = require('url');
 const StringDecoder = require('string_decoder').StringDecoder;
+const config = require('./config');
+const fs = require('fs');
 
-// the server should respond with a string
-const server = http.createServer((req, res) => {
+const unifiedServer = (req, res) => {
   // get the url and parse it
   const parsedUrl = url.parse(req.url, true);
 
@@ -52,34 +54,64 @@ const server = http.createServer((req, res) => {
 
     // route the request to the handler specified in the handler
     chosenHandler(data, (statusCode, payload) => {
+      //console.log({ data, statusCode, payload });
       //Use the status code called back by the handler, or default 200
       statusCode = typeof statusCode == 'number' ? statusCode : 200;
       // use the payload called back by the handler, or t
-      payload = typeof payload == 'object' ? payload : {};
+      payload = typeof payload === 'object' ? payload : {};
 
       // convert the payload to string
       const payloadString = JSON.stringify(payload);
 
       // return the response
+      res.setHeader('content-Type', 'application/json');
       res.writeHead(statusCode);
       res.end(payloadString);
       console.log('Returning this response: ', statusCode, payloadString);
     });
   });
-});
+};
+
+// the server should respond with a string
+const httpServer = http.createServer((req, res) => unifiedServer(req, res));
+
+const httpsServerOptions = {
+  key: fs.readFileSync('./https/key.pem'),
+  cert: fs.readFileSync('./https/cert.pem')
+};
+const httpsServer = https.createServer(httpsServerOptions, (req, res) =>
+  unifiedServer(req, res)
+);
 
 //Start the server, and have it listen on port 3000
-server.listen(3000, () => {
-  console.log('The server is up and running now');
+httpServer.listen(config.httpPort, () => {
+  console.log(
+    `The server is up and running now at port: ${config.httpPort} mode: ${
+      config.envName
+    }`
+  );
+});
+
+httpsServer.listen(config.httpsPort, () => {
+  console.log(
+    `The server is up and running now at port: ${config.httpsPort} mode: ${
+      config.envName
+    }`
+  );
 });
 
 // define handler
 const handlers = {};
 
-// Sample handler
-handlers.sample = (data, callback) => {
-  // Callback a http status code, and a payload object
-  callback(406, { name: 'sample handler' });
+// ping handler
+
+handlers.ping = (data, callback) => {
+  callback(200);
+};
+
+handlers.hello = (data, callback) => {
+  const response = { message: 'Hello Im HAL' };
+  callback(200, response);
 };
 
 // Not found handler
@@ -89,5 +121,6 @@ handlers.notFound = (data, callback) => {
 
 // define a request router
 const router = {
-  sample: handlers.sample
+  ping: handlers.ping,
+  hello: handlers.hello
 };
